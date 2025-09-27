@@ -309,6 +309,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm 0.29.0",
  "ratatui",
+ "serde",
  "serde_json",
 ]
 
@@ -467,6 +468,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80ece43fc6fbed4eb5392ab50c07334d3e577cbf40997ee896fe7af40bba4245"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]
