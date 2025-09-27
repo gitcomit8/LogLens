@@ -5,8 +5,9 @@ use crossterm::terminal::{
 use crossterm::{event, execute};
 use ratatui::backend::{Backend, CrosstermBackend};
 use ratatui::layout::{Constraint, Layout};
+use ratatui::prelude::Modifier;
 use ratatui::style::{Style, Stylize};
-use ratatui::widgets::{Block, Borders, Cell, Row, Table};
+use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
 use ratatui::{Frame, Terminal};
 use serde::Deserialize;
 use serde_json::Value;
@@ -23,6 +24,46 @@ struct ParsedLine {
 struct App {
     should_quit: bool,
     items: Vec<ParsedLine>,
+    state: TableState,
+}
+
+// methods for managing App's state
+impl App {
+    fn new(items: Vec<ParsedLine>) -> App {
+        App {
+            should_quit: false,
+            items,
+            state: TableState::default(),
+        }
+    }
+
+    pub fn next(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i >= self.items.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+
+    pub fn previous(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.items.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
 }
 fn main() -> io::Result<()> {
     //----- DATA INGESTION -----
@@ -45,10 +86,7 @@ fn main() -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     //---- APP CREATION & RUNNING
-    let app = App {
-        should_quit: false,
-        items,
-    };
+    let app = App::new(items);
     run_tui(&mut terminal, app)?;
 
     //----- TUI RESTORATION -----
@@ -67,14 +105,19 @@ fn main() -> io::Result<()> {
 fn run_tui<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
     loop {
         //draw the ui
-        terminal.draw(|f| ui(f, &app))?;
+        terminal.draw(|f| ui(f, &mut app))?;
 
         //handle events like key presses
         // poll with a timeout of 250ms
         if event::poll(std::time::Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q') {
-                    app.should_quit = true;
+                if key.kind == event::KeyEventKind::Press {
+                    match key.code {
+                        KeyCode::Char('q') => app.should_quit = true,
+                        KeyCode::Down => app.next(),
+                        KeyCode::Up => app.previous(),
+                        _ => {}
+                    }
                 }
             }
         }
@@ -85,7 +128,7 @@ fn run_tui<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
 }
 
 //this fn defines and draws the widgets
-fn ui(frame: &mut Frame, app: &App) {
+fn ui(frame: &mut Frame, app: &mut App) {
     //Define the layout
     let rects = Layout::default()
         .constraints([Constraint::Percentage(100)].as_ref())
@@ -93,6 +136,7 @@ fn ui(frame: &mut Frame, app: &App) {
         .split(frame.area());
 
     //----- TABLE CREATION -----
+    let row_highlight_style = Style::default().add_modifier(Modifier::REVERSED);
     let header_cells = ["Level", "Message", "Other Data"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().bold()));
@@ -124,8 +168,9 @@ fn ui(frame: &mut Frame, app: &App) {
     //Create table widget
     let table = Table::new(rows, widths)
         .header(header)
-        .block(Block::default().borders(Borders::ALL).title("Logs"));
+        .block(Block::default().borders(Borders::ALL).title("Logs"))
+        .row_highlight_style(row_highlight_style);
 
     //Render the table
-    frame.render_widget(table, rects[0]);
+    frame.render_stateful_widget(table, rects[0], &mut app.state);
 }
